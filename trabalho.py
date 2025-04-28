@@ -19,28 +19,44 @@
 import numpy as np
 import skfuzzy as fuzz
 import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
 import networkx as nx
 import copy
 import random
 import scipy.stats as stats
-import time
+import logging 
 import skfuzzy.control.visualization as viewer
 
+#################################################################
+# Arquivos de log
+#################################################################
+# para console e para arquivo....
+formato = logging.Formatter('%(name)s: %(asctime)s - [%(levelname)s] -- %(message)s',
+                datefmt='%d/%m/%Y-%H:%M:%S')
+ch1 = logging.StreamHandler()
+ch1.setLevel(logging.INFO)
+ch1.setFormatter(formato)
+ch2 = logging.FileHandler('saidas.log',mode='w')
+ch2.setLevel(logging.INFO)
+ch2.setFormatter(formato)
+# cria o logger 
+logfuzzy = logging.getLogger('[FUZZY]')
+logfuzzy.addHandler(ch1)
+logfuzzy.addHandler(ch2)
+logtestes = logging.getLogger('[TESTES]')
+logtestes.addHandler(ch1)
+logtestes.addHandler(ch2)
 
-
-# função de apoio para complemento fuzzy
-def comp1(self,v):
-    result = np.array()
-    for i in v:
-        result.append(1.-i)
-    return result
-
+#################################################################
+# Controlador fuzzy para determinação de custo de enlace
+#################################################################
 class fuzzyDelayCost:
     def __init__(self):
         """
         Inicializa a controladora fuzzy para determinar peso de enlaces
         favorecendo serviços sensíveis ao atraso
         """
+        logfuzzy.info('Iniciando controlador fuzzy')
         # ANTECEDENTES
         self.faixa_atraso = np.arange(1,50,0.1)
         self.faixa_capacidade = np.arange(1,1000,1)
@@ -138,18 +154,18 @@ class fuzzyDelayCost:
         descarte_nota_alta = fuzz.interp_membership(self.faixa_descarte, self.descarte_alto, descarte)
 
         # Relata as avaliações de pertinência
-        print("Atraso - baixo: %e" % atraso_nota_baixa)
-        print("Atraso - médio: %e" % atraso_nota_media)
-        print("Atraso - alto: %e" % atraso_nota_alta)
-        print("Capacidade - baixa: %e" % capacidade_nota_baixa)
-        print("Capacidade - média: %e" % capacidade_nota_media)
-        print("Capacidade - alta: %e" % capacidade_nota_alta)
-        print("Ocupação - baixa: %e" % ocupacao_nota_baixa)
-        print("Ocupação - média: %e" % ocupacao_nota_media)
-        print("Ocupação - alta: %e" % ocupacao_nota_alta)
-        print("Descarte - baixo: %e" % descarte_nota_baixa)
-        print("Descarte - médio: %e" % descarte_nota_media)
-        print("Descarte - alto: %e" % descarte_nota_alta)
+        logfuzzy.debug("Atraso - baixo: %e" % atraso_nota_baixa)
+        logfuzzy.debug("Atraso - médio: %e" % atraso_nota_media)
+        logfuzzy.debug("Atraso - alto: %e" % atraso_nota_alta)
+        logfuzzy.debug("Capacidade - baixa: %e" % capacidade_nota_baixa)
+        logfuzzy.debug("Capacidade - média: %e" % capacidade_nota_media)
+        logfuzzy.debug("Capacidade - alta: %e" % capacidade_nota_alta)
+        logfuzzy.debug("Ocupação - baixa: %e" % ocupacao_nota_baixa)
+        logfuzzy.debug("Ocupação - média: %e" % ocupacao_nota_media)
+        logfuzzy.debug("Ocupação - alta: %e" % ocupacao_nota_alta)
+        logfuzzy.debug("Descarte - baixo: %e" % descarte_nota_baixa)
+        logfuzzy.debug("Descarte - médio: %e" % descarte_nota_media)
+        logfuzzy.debug("Descarte - alto: %e" % descarte_nota_alta)
         # regras (Sugeno)
         # Custo priorizando atraso baixo
         # AND = fmin
@@ -160,7 +176,7 @@ class fuzzyDelayCost:
         w1B = np.fmin(w1A,descarte_nota_baixa)
         w1 = np.fmin(atraso_nota_baixa,w1B)
         f1 =  9*(0.7*(1-atraso_nota_baixa)+0.3*((1-ocupacao_nota_baixa)+(1-ocupacao_nota_media)+(1-descarte_nota_baixa))/3)+1
-        print("Regra 1: %e - Consequência estimada: %f" % (w1,f1))
+        logfuzzy.debug("Regra 1: %e - Consequência estimada: %f" % (w1,f1))
         # SE atraso=baixo E capacidade = (média ou alta) E ocupacao = (alta) E descarte = baixo ENTAO CustoDelay = f2
         w2A = np.fmax(capacidade_nota_media,capacidade_nota_alta)
         w2B = np.fmin(ocupacao_nota_alta,descarte_nota_baixa)
@@ -168,20 +184,20 @@ class fuzzyDelayCost:
         w2 = np.fmin(atraso_nota_baixa,w2C)
         f2 =  10*(0.5*(1-atraso_nota_baixa)+0.5*((1-capacidade_nota_media)+(1-capacidade_nota_alta)+7*ocupacao_nota_alta+
             (1-descarte_nota_baixa))/10)+10
-        print("Regra 2: %e - Consequência estimada: %f" % (w2,f2))
+        logfuzzy.debug("Regra 2: %e - Consequência estimada: %f" % (w2,f2))
         # SE atraso=baixo E capacidade = (baixa) E ocupacao = (alta) E descarte = baixo ENTAO CustoDelay = f3
         w3A = np.fmin(ocupacao_nota_alta,descarte_nota_baixa)
         w3B = np.fmin(capacidade_nota_baixa,w2A)
         w3 = np.fmin(atraso_nota_baixa,w3B)
         f3 =  10*(0.5*(1-atraso_nota_baixa)+0.5*(4*capacidade_nota_baixa+5*ocupacao_nota_alta+
             (1-descarte_nota_baixa)/10))+20
-        print("Regra 3: %e - Consequência estimada: %f" % (w3,f3))
+        logfuzzy.debug("Regra 3: %e - Consequência estimada: %f" % (w3,f3))
         # SE atraso = baixo E capacidade = (any) E ocupacao = (baixa ou media) E descarte=médio ENTAO CustoDelay = f4
         w4A = np.fmax(ocupacao_nota_baixa,ocupacao_nota_media)
         w4B = np.fmin(w4A,descarte_nota_media)
         w4 = np.fmin(atraso_nota_baixa,w4B)
         f4 = 20*(0.5*(1-atraso_nota_baixa)+0.5*(2*((1-ocupacao_nota_baixa)+(1-ocupacao_nota_media))+8*descarte_nota_media)/10)+10
-        print("Regra 4: %e - Consequência estimada: %f" % (w4,f4))
+        logfuzzy.debug("Regra 4: %e - Consequência estimada: %f" % (w4,f4))
         # SE atraso=baixo E capacidade = (média ou alta) E ocupacao = (alta) E descarte = médio ENTAO CustoDelay = f5
         w5A = np.fmax(capacidade_nota_media,capacidade_nota_alta)
         w5B = np.fmin(ocupacao_nota_alta,descarte_nota_media)
@@ -189,28 +205,28 @@ class fuzzyDelayCost:
         w5 = np.fmin(atraso_nota_baixa,w5C)
         f5 =  20*(0.5*(1-atraso_nota_baixa)+0.5*((1-capacidade_nota_media)+(1-capacidade_nota_alta)+4*ocupacao_nota_alta+
             4*descarte_nota_baixa)/10)+20
-        print("Regra 5: %e - Consequência estimada: %f" % (w5,f5))
+        logfuzzy.debug("Regra 5: %e - Consequência estimada: %f" % (w5,f5))
         # SE atraso=baixo E capacidade = (baixa) E ocupacao = (alta) E descarte = medio ENTAO CustoDelay = f6
         w6A = np.fmin(ocupacao_nota_alta,descarte_nota_media)
         w6B = np.fmin(capacidade_nota_baixa,w6A)
         w6 = np.fmin(atraso_nota_baixa,w6B)
         f6 =  20*(0.5*(1-atraso_nota_baixa)+0.5*(2*capacidade_nota_baixa+4*ocupacao_nota_alta+
             4*descarte_nota_media)/10)+30
-        print("Regra 6: %e - Consequência estimada: %f" % (w6,f6))
+        logfuzzy.debug("Regra 6: %e - Consequência estimada: %f" % (w6,f6))
         # SE atraso = baixo E capacidade = (any) E ocupacao = (baixa,media ou alta) E descarte=alto ENTAO CustoDelay = f7
         w7A = np.fmax(ocupacao_nota_baixa,np.fmax(ocupacao_nota_media,ocupacao_nota_alta))
         w7B = np.fmin(w7A,descarte_nota_alta)
         w7 = np.fmin(atraso_nota_baixa,w7B)
         f7 =  30*(0.4*(1-atraso_nota_baixa)+0.6*(4*((1-ocupacao_nota_baixa)+
             ocupacao_nota_media+ocupacao_nota_alta)+6*descarte_nota_alta)/10)+60
-        print("Regra 7: %e - Consequência estimada: %f" % (w7,f7))
+        logfuzzy.debug("Regra 7: %e - Consequência estimada: %f" % (w7,f7))
         # ATRASO = médio
         # SE atraso = médio E ocupacao = (baixa ou media) E descarte=baixo ENTAO CustoDelay = f8
         w8A = np.fmax(ocupacao_nota_baixa,ocupacao_nota_media)
         w8B = np.fmin(w8A,descarte_nota_baixa)
         w8 = np.fmin(atraso_nota_media,w8B)
         f8 =  10*(0.7*atraso_nota_media+0.3*((1-ocupacao_nota_baixa)+(1-ocupacao_nota_media)+(1-descarte_nota_baixa))/3)+10
-        print("Regra 8: %e - Consequência estimada: %f" % (w8,f8))
+        logfuzzy.debug("Regra 8: %e - Consequência estimada: %f" % (w8,f8))
         # SE atraso=médio E capacidade = (média ou alta) E ocupacao = (alta) E descarte = baixo ENTAO CustoDelay = f9
         w9A = np.fmax(capacidade_nota_media,capacidade_nota_alta)
         w9B = np.fmin(ocupacao_nota_alta,descarte_nota_baixa)
@@ -218,20 +234,20 @@ class fuzzyDelayCost:
         w9 = np.fmin(atraso_nota_media,w9C)
         f9 =  10*(0.5*atraso_nota_media+0.5*((1-capacidade_nota_media)+(1-capacidade_nota_alta)+7*ocupacao_nota_alta+
             (1-descarte_nota_baixa))/10)+20
-        print("Regra 9: %e - Consequência estimada: %f" % (w9,f9))
+        logfuzzy.debug("Regra 9: %e - Consequência estimada: %f" % (w9,f9))
         # SE atraso=médio E capacidade = (baixa) E ocupacao = (alta) E descarte = baixo ENTAO CustoDelay = f10
         w10A = np.fmin(ocupacao_nota_alta,descarte_nota_baixa)
         w10B = np.fmin(capacidade_nota_baixa,w10A)
         w10 = np.fmin(atraso_nota_media,w10B)
         f10 =  10*(0.5*atraso_nota_media+0.5*(4*capacidade_nota_baixa+5*ocupacao_nota_alta+
             (1-descarte_nota_baixa)/10))+30
-        print("Regra 10: %e - Consequência estimada: %f" % (w10,f10))
+        logfuzzy.debug("Regra 10: %e - Consequência estimada: %f" % (w10,f10))
         # SE atraso = médio E capacidade = (any) E ocupacao = (baixa ou media) E descarte=médio ENTAO CustoDelay = f11
         w11A = np.fmax(ocupacao_nota_baixa,ocupacao_nota_media)
         w11B = np.fmin(w11A,descarte_nota_media)
         w11 = np.fmin(atraso_nota_media,w11B)
         f11 = 20*(0.5*atraso_nota_media+0.5*(2*((1-ocupacao_nota_baixa)+(1-ocupacao_nota_media))+8*descarte_nota_media)/10)+20
-        print("Regra 11: %e - Consequência estimada: %f" % (w11,f11))
+        logfuzzy.debug("Regra 11: %e - Consequência estimada: %f" % (w11,f11))
         # SE atraso=médio E capacidade = (média ou alta) E ocupacao = (alta) E descarte = médio ENTAO CustoDelay = f12
         w12A = np.fmax(capacidade_nota_media,capacidade_nota_alta)
         w12B = np.fmin(ocupacao_nota_alta,descarte_nota_media)
@@ -239,34 +255,52 @@ class fuzzyDelayCost:
         w12 = np.fmin(atraso_nota_media,w12C)
         f12 =  20*(0.5*atraso_nota_media+0.5*((1-capacidade_nota_media)+(1-capacidade_nota_alta)+4*ocupacao_nota_alta+
             4*descarte_nota_baixa)/10)+30
-        print("Regra 12: %e - Consequência estimada: %f" % (w12,f12))
+        logfuzzy.debug("Regra 12: %e - Consequência estimada: %f" % (w12,f12))
         # SE atraso=médio E capacidade = (baixa) E ocupacao = (alta) E descarte = medio ENTAO CustoDelay = f13
         w13A = np.fmin(ocupacao_nota_alta,descarte_nota_media)
         w13B = np.fmin(capacidade_nota_baixa,w13A)
         w13 = np.fmin(atraso_nota_media,w13B)
         f13 =  20*(0.5*atraso_nota_media+0.5*(2*capacidade_nota_baixa+4*ocupacao_nota_alta+
             4*descarte_nota_media)/10)+40
-        print("Regra 13: %e - Consequência estimada: %f" % (w13,f13))
+        logfuzzy.debug("Regra 13: %e - Consequência estimada: %f" % (w13,f13))
         # SE atraso = médio E capacidade = (any) E ocupacao = (baixa,media ou alta) E descarte=alto ENTAO CustoDelay = f14
         w14A = np.fmax(ocupacao_nota_baixa,np.fmax(ocupacao_nota_media,ocupacao_nota_alta))
         w14B = np.fmin(w14A,descarte_nota_alta)
         w14 = np.fmin(atraso_nota_media,w14B)
         f14 =  30*(0.4*atraso_nota_media+0.6*(4*((1-ocupacao_nota_baixa)+
             ocupacao_nota_media+ocupacao_nota_alta)+6*descarte_nota_alta)/10)+70
-        print("Regra 14: %e - Consequência estimada: %f" % (w14,f14))
+        logfuzzy.debug("Regra 14: %e - Consequência estimada: %f" % (w14,f14))
         # ATRASO = alto
         # SE atraso = alto EENTAO CustoDelay = f15
         w15 = atraso_nota_alta
         f15 =  20*(0.6*atraso_nota_alta+0.4*(2*capacidade_nota_baixa+4*((1-ocupacao_nota_baixa)+ocupacao_nota_media+ocupacao_nota_alta)+
                                     4*((1-descarte_nota_baixa)+descarte_nota_media+descarte_nota_alta)))/10+80
-        print("Regra 15: %e - Consequência estimada: %f" % (w15,f15))
+        logfuzzy.debug("Regra 15: %e - Consequência estimada: %f" % (w15,f15))
         custo_delay = (w1*f1+w2*f2+w3*f3+w4*f4+w5*f5+w6*f6+w7*f7+w8*f8+w9*f9+w10*f10+w11*f11+w12*f12+w13*f13+
                w14*f14+w15*f15)/(w1+w2+w3+w4+w5+w6+w7+w8+w9+w10+w11+w12+w13+w14+w15)
-        print("Custo final: %f" % custo_delay)
+        logfuzzy.debug("Custo final: %f" % custo_delay)
         return custo_delay
 
-# altera o peso dos enlaces da topologia indicada, de acordo com a categoria de serviço e 
-# o controlador fuzzy
+
+#################################################################
+# Funções de apoio
+#################################################################
+
+# função de apoio para complemento fuzzy
+def comp1(v):
+    """
+    Determina o complemento de um conjunto fuzzy
+
+    Parâmetros:
+        v: lista de valores
+
+    Returns:
+        lista: lista complementada
+    """
+    result = np.array()
+    for i in v:
+        result.append(1.-i)
+    return result
 
 def calcula_pesos(topo,service,fuzzy):
     """
@@ -287,17 +321,14 @@ def calcula_pesos(topo,service,fuzzy):
         descarte = nova[link[0]][link[1]]['drop']
         custo = fuzzy.calculaCusto(atraso,capacidade,ocupacao,descarte)
         nova[link[0]][link[1]]['weight'] = custo
-        print('Enlace: ',str(link))
-        print('\tCusto: %f'%custo)
+        logfuzzy.info('Enlace: ',str(link))
+        logfuzzy.info('\tCusto: %f'%custo)
     return nova
-
-
-# aplica djikstra para encontrar as melhores árvores entre todos os pares (origem,destino) possíveis
 
 def calcula_caminhos(topo):
     """
     Calcula os caminhos de acordo com o custo definido pelo controlador fuzzy
-    para os enlaces.
+    para os enlaces, usando o algoritmo de Djikstra, para todos os pares (origem,destino)
     
     TODO: nessa versão para simplificar a visualização, consideramos a rede simétrica
     ou seja, um melhor caminho (src,dst) é o mesmo melhor caminho (dst,src)
@@ -329,6 +360,15 @@ def calcula_caminhos(topo):
     return caminhos
 
 def drawTopo(topo):
+    """
+    Gera uma representação gráfica da topologia.
+
+    Parâmetros:
+        topo (networkx.Graph): grafo da topologia
+
+    Retorna:
+        fig, ax: Referência para a figura e eixos da figura (matplotlib)
+    """
     pos = nx.spring_layout(topo,seed=101291211)
     fig, ax = plt.subplots()
     nx.draw_networkx_edges(
@@ -366,54 +406,202 @@ def drawTopo(topo):
     return fig,ax
 
 
-def drawPath(topo,caminho):
-    local = copy.deepcopy(topo)
-    # verifica se os nós da árvore estão no caminho 
-    # e remove todos que não fazem parte
-    for nodo in list(local.nodes):
-        remover = True
-        for passo in caminho:
-            if (nodo==passo):
-                remover = False
-        if remover:
-            local.remove_node(nodo)
-    pos = nx.spring_layout(topo,seed=101291211)
-    fig, ax = plt.subplots()
+def drawPath(topoA,caminhoA,topoB,caminhoB,topoC,caminhoC,topoD,caminhoD):
+    """
+    Gera uma representação gráfica dos caminhos associados a uma topologia
+
+    Parâmetros:
+        topo (networkx.Graph): grafo da topologia
+        caminho (lista): identificadores dos nós pertecentes ao caminho
+            entre par (origem,destino) na topologia indicada
+
+    Retorna:
+        fig, ax: Referência para a figura e eixos da figura (matplotlib)
+    """
+    local1 = copy.deepcopy(topoA)
+    local2 = copy.deepcopy(topoB)
+    local3 = copy.deepcopy(topoC)
+    local4 = copy.deepcopy(topoD)
+    #  apenas nodos do caminho
+    local1 = nx.subgraph(local1,caminhoA)
+    local2 = nx.subgraph(local2,caminhoB)
+    local3 = nx.subgraph(local3,caminhoC)
+    local4 = nx.subgraph(local4,caminhoD)
+    first = caminhoA[0]
+    last = caminhoA[-1]
+    pos = nx.spring_layout(topoA,seed=101291211)
+    fig = plt.figure(figsize=(10,5))
+    fig.suptitle('De: %d Para: %d' %(first,last))
+    gs = gridspec.GridSpec(2, 2, width_ratios=[1, 1], height_ratios=[1, 1])
+    ax1 = fig.add_subplot(gs[0,0])
+    ax1.set_title('Custo por número de hops\n'+str(caminhoA))
+    # topologia 1
     nx.draw_networkx_edges(
-        local,
+        local1,
         pos = pos,
-        ax = ax,
+        ax = ax1,
         arrows = True,
         arrowstyle='-',
         min_source_margin=5,
         min_target_margin=5,
     )
-    labels = nx.get_edge_attributes(local,'weight')
+    labels = nx.get_edge_attributes(local1,'weight')
+    llabels = nx.get_edge_attributes(local1,'latency')
+    olabels = nx.get_edge_attributes(local1,'occupation')
+    dlabels = nx.get_edge_attributes(local1,'drop')
     for key in labels:
-        formatado = "{:.2f}".format(labels[key])
+        formatado = "(C:{:.2f})".format(labels[key])+ "\n(L:{:.2f})".format(llabels[key])+"-(O:{:.2f})".format(olabels[key])+"-(D:{:.2f})".format(dlabels[key])
         labels[key] = formatado
     nx.draw_networkx_edge_labels(
-        local,
+        local1,
         edge_labels = labels,
         pos = pos,
-        ax = ax
+        ax = ax1
     )
     nx.draw_networkx_nodes(
-        local,
+        local1,
         pos = pos,
-        ax = ax,
+        ax = ax1,
         node_size=1500
     )
-    labels = nx.get_node_attributes(local,'name')
+    labels = nx.get_node_attributes(local1,'name')
     nx.draw_networkx_labels(
-        local,
+        local1,
         labels = labels,
         pos = pos,
-        ax = ax
+        ax = ax1
     )
-    return fig,ax
+    # topologia 2
+    ax2 = fig.add_subplot(gs[0,1])
+    ax2.set_title('Custo por latência\n'+str(caminhoB))
+    nx.draw_networkx_edges(
+        local2,
+        pos = pos,
+        ax = ax2,
+        arrows = True,
+        arrowstyle='-',
+        min_source_margin=5,
+        min_target_margin=5,
+    )
+    labels = nx.get_edge_attributes(local2,'weight')
+    llabels = nx.get_edge_attributes(local2,'latency')
+    olabels = nx.get_edge_attributes(local2,'occupation')
+    dlabels = nx.get_edge_attributes(local2,'drop')
+    for key in labels:
+        formatado = "(C:{:.2f})".format(labels[key])+ "\n(L:{:.2f})".format(llabels[key])+"-(O:{:.2f})".format(olabels[key])+"-(D:{:.2f})".format(dlabels[key])
+        labels[key] = formatado
+    nx.draw_networkx_edge_labels(
+        local2,
+        edge_labels = labels,
+        pos = pos,
+        ax = ax2
+    )
+    nx.draw_networkx_nodes(
+        local2,
+        pos = pos,
+        ax = ax2,
+        node_size=1500
+    )
+    labels = nx.get_node_attributes(local2,'name')
+    nx.draw_networkx_labels(
+        local2,
+        labels = labels,
+        pos = pos,
+        ax = ax2
+    )
+    # topologia 3
+    ax3 = fig.add_subplot(gs[1,0])
+    ax3.set_title('Custo ponderado\n'+str(caminhoC))
+    nx.draw_networkx_edges(
+        local3,
+        pos = pos,
+        ax = ax3,
+        arrows = True,
+        arrowstyle='-',
+        min_source_margin=5,
+        min_target_margin=5,
+    )
+    labels = nx.get_edge_attributes(local3,'weight')
+    llabels = nx.get_edge_attributes(local3,'latency')
+    olabels = nx.get_edge_attributes(local3,'occupation')
+    dlabels = nx.get_edge_attributes(local3,'drop')
+    for key in labels:
+        formatado = "(C:{:.2f})".format(labels[key])+ "\n(L:{:.2f})".format(llabels[key])+"-(O:{:.2f})".format(olabels[key])+"-(D:{:.2f})".format(dlabels[key])
+        labels[key] = formatado
+    nx.draw_networkx_edge_labels(
+        local3,
+        edge_labels = labels,
+        pos = pos,
+        ax = ax3
+    )
+    nx.draw_networkx_nodes(
+        local3,
+        pos = pos,
+        ax = ax3,
+        node_size=1500
+    )
+    labels = nx.get_node_attributes(local3,'name')
+    nx.draw_networkx_labels(
+        local3,
+        labels = labels,
+        pos = pos,
+        ax = ax3
+    )
+    # topologia 4
+    ax4 = fig.add_subplot(gs[1,1])
+    ax4.set_title('Custo fuzzy\n'+str(caminhoD))
+    nx.draw_networkx_edges(
+        local4,
+        pos = pos,
+        ax = ax4,
+        arrows = True,
+        arrowstyle='-',
+        min_source_margin=5,
+        min_target_margin=5,
+    )
+    labels = nx.get_edge_attributes(local4,'weight')
+    llabels = nx.get_edge_attributes(local4,'latency')
+    olabels = nx.get_edge_attributes(local4,'occupation')
+    dlabels = nx.get_edge_attributes(local4,'drop')
+    for key in labels:
+        formatado = "(C:{:.2f})".format(labels[key])+ "\n(L:{:.2f})".format(llabels[key])+"-(O:{:.2f})".format(olabels[key])+"-(D:{:.2f})".format(dlabels[key])
+        labels[key] = formatado
+    nx.draw_networkx_edge_labels(
+        local4,
+        edge_labels = labels,
+        pos = pos,
+        ax = ax4
+    )
+    nx.draw_networkx_nodes(
+        local4,
+        pos = pos,
+        ax = ax4,
+        node_size=1500
+    )
+    labels = nx.get_node_attributes(local4,'name')
+    nx.draw_networkx_labels(
+        local4,
+        labels = labels,
+        pos = pos,
+        ax = ax4
+    )
+    
 
 def calcula_metrica(topo,caminhos):
+    """
+    Determina métricas de avaliação do comportamento dos caminhos na topologia
+    indicada, em termos de atraso cumulativo do caminho, máximo atrasos percebidos,
+    mínimos atrasos percebidos, taxa de descarte de pacotes, taxa de ocupação e 
+    capacidade dos enlaces. 
+
+    Parâmetros:
+        topo (networkx.Graph): topologia da rede avaliada
+        caminhos (lista de listas de nós): caminhos possíveis na topologia
+
+    Retorna:
+        atrasos, maximo_atrasos, minimo_atrasos, 
+        descartes, ocupacoes, capacidades: listas com as métricas para cada caminho indicado
+    """
     # quero percorrer cada caminho e totalizar, por caminho escolhido
     # os dados de atraso, descarte, ocupacao e capacidade
     atrasos = []
@@ -464,6 +652,39 @@ def calcula_metrica(topo,caminhos):
         ocupacoes.append(ocupacao)
         capacidades.append(capacidade)
     return atrasos, maximo_atrasos, minimo_atrasos, descartes, ocupacoes, capacidades
+
+def describeTopo(topo):
+    """
+    Retorna os parâmetros de característica da topologia
+
+    Parâmetros:
+        topo (networkx.Graph): grafo representativo da topologia
+
+    Retorna:
+        N,M,mean_degree,G,R,GR (float) - índices de avaliação da topologia
+    """
+    N = topo.number_of_nodes()
+    M = topo.number_of_edges()
+    sumD = 0
+    max_degree = 0
+    for node in topo.nodes:
+        grau = topo.degree(node)
+        sumD += grau
+        if (grau>max_degree):
+            max_degree=grau
+    mean_degree = sumD/N
+    sumR = 0
+    for node in topo.nodes:
+        if topo.degree(node)>mean_degree:
+            sumR+=1
+    R = sumR/N
+    G = max_degree
+    GR = G/N
+    return N,M,mean_degree,G,R,GR
+
+#################################################################
+# Topologia de testes A - Hub and spoke
+#################################################################
 
 class topoA:
     def __init__(self):
@@ -522,35 +743,248 @@ class topoA:
             self.topo[src][dst]['drop'] = descarte
             #print(self.topo[src][dst])
 
+    def randomizeStats2(self,seed,max_delay,max_occup,max_drop):
+        """
+        Gera status aleatórios dos enlaces a partir da semente fornecida.
+        Garante o mesmo comportamento dada a mesma semente.
+        Neste segundo caso, garante que a ocupação tenha relação com um possível
+        maior atraso no enlace. 
 
-    def describeTopo(self):
+        Args:
+            seed (int): Semente do gerador
         """
-        Retorna os parâmetros de característica da topologia
-        """
-        N = self.topo.number_of_nodes()
-        M = self.topo.number_of_edges()
-        sumD = 0
-        max_degree = 0
-        for node in self.topo.nodes:
-            grau = self.topo.degree(node)
-            sumD += grau
-            if (grau>max_degree):
-                max_degree=grau
-        mean_degree = sumD/N
-        sumR = 0
-        for node in self.topo.nodes:
-            if self.topo.degree(node)>mean_degree:
-                sumR+=1
-        R = sumR/N
-        G = max_degree
-        GR = G/N
-        return N,M,mean_degree,G,R,GR
-    
+        random.seed(seed)
+        # percorre todos os nós e gera os caminhos
+        for link in self.topo.edges:
+            src = link[0]
+            dst = link[1]
+            atraso = random.uniform(1,max_delay)
+            ocupacao = random.uniform(0,max_occup)
+            descarte = random.uniform(0,max_drop)
+            self.topo[src][dst]['latency'] = atraso
+            self.topo[src][dst]['occupation'] = ocupacao
+            self.topo[src][dst]['drop'] = descarte
+            #print(self.topo[src][dst])
+
     def __str__(self):
-        N,M,mean_degree,G,R,GR = self.describeTopo()
+        N,M,mean_degree,G,R,GR = describeTopo(self.topo)
         desc = 'TopoA -- N: {:d}, M: {:d}, g: {:.2f}, G: {:.2f}, R: {:.2f}, Gr: {:.2f}'
         desc = desc.format(N,M,mean_degree,G,R,GR)
         return desc
+
+#################################################################
+# Topologia de testes B - Star
+#################################################################
+
+class topoB:
+    def __init__(self):
+        """
+        Cria o modelo de topologia A para avaliação.
+        Tipo: Star
+        """
+        self.topo = nx.Graph(nome='Topologia B')
+        # adiciona os nós e enlaces entre todos os nós
+        for i in range(1,16):
+            peso = 1
+            uso = 1
+            nome = 'SW'+str(i)
+            self.topo.add_node(i,weight=peso,use=uso,name=nome)
+        # agora adiciona os enlaces de forma a criar a topologia
+        peso = 1.0
+        atraso = 1.0
+        ocupacao = 1.0
+        capacidade = 100
+        descarte = 0.0
+        self.topo.add_edge(1,2,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(1,3,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(1,4,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(1,5,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(1,6,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(1,7,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(1,8,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(1,9,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(1,10,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(1,11,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(1,12,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(1,13,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(1,14,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(1,15,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(2,3,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(2,4,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(2,8,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(2,9,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(2,12,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(3,6,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(3,7,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(3,8,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(3,13,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(4,9,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(4,13,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(4,14,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(5,6,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(5,9,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(5,11,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(5,15,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(6,13,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(6,14,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(7,4,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(7,9,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(7,12,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(8,14,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(8,15,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(9,6,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(9,13,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(9,14,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(10,11,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(10,15,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(11,13,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(11,15,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(12,15,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(13,14,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+    
+    def randomizeStats(self,seed,max_delay,max_occup,max_drop):
+        """
+        Gera status aleatórios dos enlaces a partir da semente fornecida.
+        Garante o mesmo comportamento dada a mesma semente.
+
+        Args:
+            seed (int): Semente do gerador
+        """
+        random.seed(seed)
+        # percorre todos os nós e gera os caminhos
+        for link in self.topo.edges:
+            src = link[0]
+            dst = link[1]
+            atraso = random.uniform(1,max_delay)
+            ocupacao = random.uniform(0,max_occup)
+            descarte = random.uniform(0,max_drop)
+            self.topo[src][dst]['latency'] = atraso
+            self.topo[src][dst]['occupation'] = ocupacao
+            self.topo[src][dst]['drop'] = descarte
+            #print(self.topo[src][dst])
+
+    def randomizeStats2(self,seed,max_delay,max_occup,max_drop):
+        """
+        Gera status aleatórios dos enlaces a partir da semente fornecida.
+        Garante o mesmo comportamento dada a mesma semente.
+        Neste segundo caso, garante que a ocupação tenha relação com um possível
+        maior atraso no enlace. 
+
+        Args:
+            seed (int): Semente do gerador
+        """
+        random.seed(seed)
+        # percorre todos os nós e gera os caminhos
+        for link in self.topo.edges:
+            src = link[0]
+            dst = link[1]
+            atraso = random.uniform(1,max_delay)
+            ocupacao = random.uniform(0,max_occup)
+            descarte = random.uniform(0,max_drop)
+            self.topo[src][dst]['latency'] = atraso
+            self.topo[src][dst]['occupation'] = ocupacao
+            self.topo[src][dst]['drop'] = descarte
+            #print(self.topo[src][dst])
+
+    def __str__(self):
+        N,M,mean_degree,G,R,GR = describeTopo(self.topo)
+        desc = 'TopoB -- N: {:d}, M: {:d}, g: {:.2f}, G: {:.2f}, R: {:.2f}, Gr: {:.2f}'
+        desc = desc.format(N,M,mean_degree,G,R,GR)
+        return desc
+
+#################################################################
+# Topologia de testes C - Ladder
+#################################################################
+
+class topoC:
+    def __init__(self):
+        """
+        Cria o modelo de topologia A para avaliação.
+        Tipo: Ladder
+        """
+        self.topo = nx.Graph(nome='Topologia C')
+        # adiciona os nós e enlaces entre todos os nós
+        for i in range(1,13):
+            peso = 1
+            uso = 1
+            nome = 'SW'+str(i)
+            self.topo.add_node(i,weight=peso,use=uso,name=nome)
+        # agora adiciona os enlaces de forma a criar a topologia
+        peso = 1.0
+        atraso = 1.0
+        ocupacao = 1.0
+        capacidade = 100
+        descarte = 0.0
+        self.topo.add_edge(1,2,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(1,3,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(1,4,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(2,5,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(2,6,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(2,12,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(3,8,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(3,10,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(4,7,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(4,11,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(5,9,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(6,8,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(6,11,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(7,10,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(8,12,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+        self.topo.add_edge(9,10,weight=peso,latency=atraso,capacity=capacidade,occupation=ocupacao,drop=descarte)
+    
+    def randomizeStats(self,seed,max_delay,max_occup,max_drop):
+        """
+        Gera status aleatórios dos enlaces a partir da semente fornecida.
+        Garante o mesmo comportamento dada a mesma semente.
+
+        Args:
+            seed (int): Semente do gerador
+        """
+        random.seed(seed)
+        # percorre todos os nós e gera os caminhos
+        for link in self.topo.edges:
+            src = link[0]
+            dst = link[1]
+            atraso = random.uniform(1,max_delay)
+            ocupacao = random.uniform(0,max_occup)
+            descarte = random.uniform(0,max_drop)
+            self.topo[src][dst]['latency'] = atraso
+            self.topo[src][dst]['occupation'] = ocupacao
+            self.topo[src][dst]['drop'] = descarte
+            #print(self.topo[src][dst])
+
+    def randomizeStats2(self,seed,max_delay,max_occup,max_drop):
+        """
+        Gera status aleatórios dos enlaces a partir da semente fornecida.
+        Garante o mesmo comportamento dada a mesma semente.
+        Neste segundo caso, garante que a ocupação tenha relação com um possível
+        maior atraso no enlace. 
+
+        Args:
+            seed (int): Semente do gerador
+        """
+        random.seed(seed)
+        # percorre todos os nós e gera os caminhos
+        for link in self.topo.edges:
+            src = link[0]
+            dst = link[1]
+            atraso = random.uniform(1,max_delay)
+            ocupacao = random.uniform(0,max_occup)
+            descarte = random.uniform(0,max_drop)
+            self.topo[src][dst]['latency'] = atraso
+            self.topo[src][dst]['occupation'] = ocupacao
+            self.topo[src][dst]['drop'] = descarte
+            #print(self.topo[src][dst])
+
+    def __str__(self):
+        N,M,mean_degree,G,R,GR = describeTopo(self.topo)
+        desc = 'TopoC -- N: {:d}, M: {:d}, g: {:.2f}, G: {:.2f}, R: {:.2f}, Gr: {:.2f}'
+        desc = desc.format(N,M,mean_degree,G,R,GR)
+        return desc
+    
+#################################################################
+# Funções auxiliares para testes e resultados
+#################################################################
 
 def plotaBarras(dados1,dados2,dados3,dados4,titulo,ylabel):
     d1 = np.array(dados1)
@@ -605,119 +1039,135 @@ def plotaBarras(dados1,dados2,dados3,dados4,titulo,ylabel):
 
     plt.tight_layout()
 
-# # agora adiciona os enlaces entre todos os nós
-# for nA in topo1.nodes:
-#     for nB in topo1.nodes:
-#         if (nA!=nB):
-#             if ((not topo1.has_edge(nA,nB))or(not topo1.has_edge(nB,nA))):
-#                 peso = 1
-#                 atraso = 1.0
-#                 ocupacao = 1.0
-#                 capacidade = 100
-#                 descarte = 0.1
-#                 topo1.add_edge(nA,nB,weight=peso,latency=atraso,occupation=ocupacao,drop=descarte)
+def runTeste(topo,id_topo,draw):
+    """
+    Roda um cenário de teste com a topologia indicada
 
+    Args:
+        topo (networkx.Graph): topologia sendo avaliada
+        id_topo (std): string indentificando a topologia nos gráficos
+        draw(bool): indica se os caminho do método proposto devem ser esboçados contra 
+                    as demais técnicas
+    """
+    drawTopo(topo)
+    # agora tem que comparar os métodos
+    # djikstra simples, por distância
+    caminhos1 = calcula_caminhos(topo)
+    atrasos1, maximo_atrasos1, minimo_atrasos1, descartes1, ocupacoes1, capacidades1= calcula_metrica(topo,caminhos1)
+    # djikstra com custo por atraso puro
+    ctopo2 = copy.deepcopy(topo)
+    for link in ctopo2.edges:
+        src=link[0]
+        dst=link[1]
+        ctopo2[src][dst]['weight'] = ctopo2[src][dst]['latency']
+    caminhos2 = calcula_caminhos(ctopo2)
+    atrasos2, maximo_atrasos2, minimo_atrasos2, descartes2, ocupacoes2, capacidades2= calcula_metrica(ctopo2,caminhos2)
+    # djikstra com custo formulado
+    ctopo3 = copy.deepcopy(topo)
+    for link in ctopo3.edges:
+        src=link[0]
+        dst=link[1]
+        ctopo3[src][dst]['weight'] = 0.5*ctopo3[src][dst]['latency']+0.2*ctopo3[src][dst]['occupation']+0.3*ctopo3[src][dst]['drop']
+    caminhos3 = calcula_caminhos(ctopo3)
+    atrasos3, maximo_atrasos3, minimo_atrasos3, descartes3, ocupacoes3, capacidades3= calcula_metrica(ctopo3,caminhos3)
+    # método proposto
+    novatopo = calcula_pesos(topo,1,delay)
+    drawTopo(novatopo)
+    caminhos4 = calcula_caminhos(novatopo)
+    atrasos4, maximo_atrasos4, minimo_atrasos4, descartes4, ocupacoes4, capacidades4= calcula_metrica(novatopo,caminhos4)
+    # Atrasos
+    desc = 'Atrasos acumulados ('+id_topo+')'
+    plotaBarras(atrasos1,atrasos2,atrasos3,atrasos4,desc,'milisegundos')
+    desc = 'Atrasos máximos ('+id_topo+')'
+    plotaBarras(maximo_atrasos1,maximo_atrasos2,maximo_atrasos3,maximo_atrasos4,desc,'milisegundos')
+    desc = 'Atrasos mínimos ('+id_topo+')'
+    plotaBarras(minimo_atrasos1,minimo_atrasos2,minimo_atrasos3,minimo_atrasos4,desc,'milisegundos')
+    desc = 'Ocupações ('+id_topo+')'
+    plotaBarras(ocupacoes1,ocupacoes2,ocupacoes3,ocupacoes4,desc,'%')
+    desc = 'Descartes ('+id_topo+')'
+    plotaBarras(descartes1,descartes2,descartes3,descartes4,desc,'%')
+    logtestes.info("*********************************************************")
+    logtestes.info("TOPOLOGIA A")
+    logtestes.info('ATRASOS CUMULATIVOS')
+    logtestes.info("DJIKSTRA PURO")
+    logtestes.info(stats.describe(np.array(atrasos1)))
+    logtestes.info("DJIKSTRA POR ATRASO")
+    logtestes.info(stats.describe(np.array(atrasos2)))
+    logtestes.info("DJIKSTRA PONDERADO")
+    logtestes.info(stats.describe(np.array(atrasos3)))
+    logtestes.info("DJIKSTRA FUZZY")
+    logtestes.info(stats.describe(np.array(atrasos4)))
+    logtestes.info("************")
+    logtestes.info('MÁXIMOS ATRASOS')
+    logtestes.info("DJIKSTRA PURO")
+    logtestes.info(stats.describe(np.array(maximo_atrasos1)))
+    logtestes.info("DJIKSTRA POR ATRASO")
+    logtestes.info(stats.describe(np.array(maximo_atrasos2)))
+    logtestes.info("DJIKSTRA PONDERADO")
+    logtestes.info(stats.describe(np.array(maximo_atrasos3)))
+    logtestes.info("DJIKSTRA FUZZY")
+    logtestes.info(stats.describe(np.array(maximo_atrasos4)))
+    logtestes.info("************")
+    logtestes.info('MÍNIMOS ATRASOS')
+    logtestes.info("DJIKSTRA PURO")
+    logtestes.info(stats.describe(np.array(minimo_atrasos1)))
+    logtestes.info("DJIKSTRA POR ATRASO")
+    logtestes.info(stats.describe(np.array(minimo_atrasos2)))
+    logtestes.info("DJIKSTRA PONDERADO")
+    logtestes.info(stats.describe(np.array(minimo_atrasos3)))
+    logtestes.info("DJIKSTRA FUZZY")
+    logtestes.info(stats.describe(np.array(minimo_atrasos4)))
+    logtestes.info("************")
+    logtestes.info('OCUPAÇÕES')
+    logtestes.info("DJIKSTRA PURO")
+    logtestes.info(stats.describe(np.array(ocupacoes1)))
+    logtestes.info("DJIKSTRA POR ATRASO")
+    logtestes.info(stats.describe(np.array(ocupacoes2)))
+    logtestes.info("DJIKSTRA PONDERADO")
+    logtestes.info(stats.describe(np.array(ocupacoes3)))
+    logtestes.info("DJIKSTRA FUZZY")
+    logtestes.info(stats.describe(np.array(ocupacoes4)))
+    logtestes.info("************")
+    logtestes.info('DESCARTES')
+    logtestes.info("DJIKSTRA PURO")
+    logtestes.info(stats.describe(np.array(descartes1)))
+    logtestes.info("DJIKSTRA POR ATRASO")
+    logtestes.info(stats.describe(np.array(descartes2)))
+    logtestes.info("DJIKSTRA PONDERADO")
+    logtestes.info(stats.describe(np.array(descartes3)))
+    logtestes.info("DJIKSTRA FUZZY")
+    logtestes.info(stats.describe(np.array(descartes4)))
+    logtestes.info("*********************************************************")
+    # desenha todos os caminhos alternativos encontrados
+    if draw:
+        for path1,path2,path3,path4 in zip(caminhos1,caminhos2,caminhos3,caminhos4):
+            if (len(path1)==2 and len(path2)==2) and (len(path3)==2) and (len(path4)==2):
+                # não desenha casos de caminhos diretos
+                continue
+            drawPath(topo,path1,ctopo2,path2,ctopo3,path3,novatopo,path4)
+
+#################################################################
+# Testes
+#################################################################
 
 delay = fuzzyDelayCost()
+
+# topologia de testes A (Hub & Spoke)
 topo1 = topoA()
 print(topo1)
 topo1.randomizeStats(14532,7,95,1.5)
-drawTopo(topo1.topo)
+runTeste(topo1.topo,'TopoA',False)
 
-# agora tem que comparar os métodos
-# djikstra simples, por distância
-caminhos1 = calcula_caminhos(topo1.topo)
-atrasos1, maximo_atrasos1, minimo_atrasos1, descartes1, ocupacoes1, capacidades1= calcula_metrica(topo1.topo,caminhos1)
+topo2 = topoB()
+print(topo2)
+topo2.randomizeStats(14532,7,95,1.5)
+runTeste(topo2.topo,'TopoB',True)
 
-# djikstra com custo por atraso puro
-ctopo = copy.deepcopy(topo1.topo)
-for link in ctopo.edges:
-    src=link[0]
-    dst=link[1]
-    ctopo[src][dst]['weight'] = ctopo[src][dst]['latency']
-caminhos2 = calcula_caminhos(ctopo)
-atrasos2, maximo_atrasos2, minimo_atrasos2, descartes2, ocupacoes2, capacidades2= calcula_metrica(ctopo,caminhos2)
+topo3 = topoC()
+print(topo3)
+topo3.randomizeStats(14532,7,95,1.5)
+runTeste(topo3.topo,'TopoC',False)
 
-# djikstra com custo formulado
-ctopo = copy.deepcopy(topo1.topo)
-for link in ctopo.edges:
-    src=link[0]
-    dst=link[1]
-    ctopo[src][dst]['weight'] = 0.4*ctopo[src][dst]['latency']+0.3*ctopo[src][dst]['occupation']+0.3*ctopo[src][dst]['drop']
-caminhos3 = calcula_caminhos(ctopo)
-atrasos3, maximo_atrasos3, minimo_atrasos3, descartes3, ocupacoes3, capacidades3= calcula_metrica(ctopo,caminhos3)
-
-# método proposto
-novatopo = calcula_pesos(topo1.topo,1,delay)
-drawTopo(novatopo)
-caminhos4 = calcula_caminhos(novatopo)
-atrasos4, maximo_atrasos4, minimo_atrasos4, descartes4, ocupacoes4, capacidades4= calcula_metrica(novatopo,caminhos4)
-
-# Atrasos
-plotaBarras(atrasos1,atrasos2,atrasos3,atrasos4,'Atrasos acumulados','milisegundos')
-plotaBarras(maximo_atrasos1,maximo_atrasos2,maximo_atrasos3,maximo_atrasos4,'Atrasos máximos','milisegundos')
-plotaBarras(minimo_atrasos1,minimo_atrasos2,minimo_atrasos3,minimo_atrasos4,'Atrasos mínimos','milisegundos')
-plotaBarras(ocupacoes1,ocupacoes2,ocupacoes3,ocupacoes4,'Ocupações','%')
-plotaBarras(descartes1,descartes2,descartes3,descartes4,'Descartes','%')
-
-print('ATRASOS CUMULATIVOS')
-print("DJIKSTRA PURO")
-print(stats.describe(np.array(atrasos1)))
-print("DJIKSTRA POR ATRASO")
-print(stats.describe(np.array(atrasos2)))
-print("DJIKSTRA PONDERADO")
-print(stats.describe(np.array(atrasos3)))
-print("DJIKSTRA FUZZY")
-print(stats.describe(np.array(atrasos4)))
-
-print('MÁXIMOS ATRASOS')
-print("DJIKSTRA PURO")
-print(stats.describe(np.array(maximo_atrasos1)))
-print("DJIKSTRA POR ATRASO")
-print(stats.describe(np.array(maximo_atrasos2)))
-print("DJIKSTRA PONDERADO")
-print(stats.describe(np.array(maximo_atrasos3)))
-print("DJIKSTRA FUZZY")
-print(stats.describe(np.array(maximo_atrasos4)))
-
-print('MÍNIMOS ATRASOS')
-print("DJIKSTRA PURO")
-print(stats.describe(np.array(minimo_atrasos1)))
-print("DJIKSTRA POR ATRASO")
-print(stats.describe(np.array(minimo_atrasos2)))
-print("DJIKSTRA PONDERADO")
-print(stats.describe(np.array(minimo_atrasos3)))
-print("DJIKSTRA FUZZY")
-print(stats.describe(np.array(minimo_atrasos4)))
-
-print('OCUPAÇÕES')
-print("DJIKSTRA PURO")
-print(stats.describe(np.array(ocupacoes1)))
-print("DJIKSTRA POR ATRASO")
-print(stats.describe(np.array(ocupacoes2)))
-print("DJIKSTRA PONDERADO")
-print(stats.describe(np.array(ocupacoes3)))
-print("DJIKSTRA FUZZY")
-print(stats.describe(np.array(ocupacoes4)))
-
-print('DESCARTES')
-print("DJIKSTRA PURO")
-print(stats.describe(np.array(descartes1)))
-print("DJIKSTRA POR ATRASO")
-print(stats.describe(np.array(descartes2)))
-print("DJIKSTRA PONDERADO")
-print(stats.describe(np.array(descartes3)))
-print("DJIKSTRA FUZZY")
-print(stats.describe(np.array(descartes4)))
-
-#for path in caminhos:
-     #drawPath(novatopo,path)
-
-
-
-# agora aplica o controlador para determinar as melhores árvores por atraso entre os pares (origem,destino)
-
-# para permitir a visualização dos gráficos
 plt.show(block=True)
 
 
