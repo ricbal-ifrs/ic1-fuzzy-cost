@@ -33,11 +33,12 @@ import skfuzzy.control.visualization as viewer
 # para console e para arquivo....
 formato = logging.Formatter('%(name)s: %(asctime)s - [%(levelname)s] -- %(message)s',
                 datefmt='%d/%m/%Y-%H:%M:%S')
+logging.basicConfig(level=logging.INFO)
 ch1 = logging.StreamHandler()
-ch1.setLevel(logging.INFO)
+ch1.setLevel(logging.DEBUG)
 ch1.setFormatter(formato)
 ch2 = logging.FileHandler('saidas.log',mode='w')
-ch2.setLevel(logging.INFO)
+ch2.setLevel(logging.DEBUG)
 ch2.setFormatter(formato)
 # cria o logger 
 logfuzzy = logging.getLogger('[FUZZY]')
@@ -50,28 +51,30 @@ logtestes.addHandler(ch2)
 #################################################################
 # Controlador fuzzy para determinação de custo de enlace
 #################################################################
+
+# PARA DELAY
 class fuzzyDelayCost:
     def __init__(self):
         """
         Inicializa a controladora fuzzy para determinar peso de enlaces
         favorecendo serviços sensíveis ao atraso
         """
-        logfuzzy.info('Iniciando controlador fuzzy')
-        # ANTECEDENTES
-        self.faixa_atraso = np.arange(1,50,0.1)
+        logfuzzy.info('Iniciando controlador fuzzy - delay')
+        # ANTECEDENTES PARA O CASO DE DELAY
+        self.faixa_atraso = np.arange(0.1,50,0.1)
         self.faixa_capacidade = np.arange(1,1000,1)
         self.faixa_ocupacao = np.arange(0,100,0.1)
         self.faixa_descarte = np.arange(0,100,0.1)
         # funções de pertinência das entradas
-        self.atraso_baixo = fuzz.trimf(self.faixa_atraso, [1.,1.,5.])
-        self.atraso_medio = fuzz.trapmf(self.faixa_atraso, [2.,5.,20.,30.])
+        self.atraso_baixo = fuzz.trapmf(self.faixa_atraso, [0.1,0.1,5.,10.])
+        self.atraso_medio = fuzz.trapmf(self.faixa_atraso, [4.,10.,20.,30.])
         self.atraso_alto = fuzz.trapmf(self.faixa_atraso, [20.,30.,50.,50.])
-        self.capacidade_baixa = fuzz.trimf(self.faixa_capacidade, [1,1,50])
-        self.capacidade_media = fuzz.trapmf(self.faixa_capacidade, [10,20,200,300])
-        self.capacidade_alta = fuzz.trapmf(self.faixa_capacidade, [200,300,1000,1000])
-        self.ocupacao_baixa = fuzz.trimf(self.faixa_ocupacao, [0.,0.,30.])
-        self.ocupacao_media = fuzz.trapmf(self.faixa_ocupacao, [20.,30.,70.,80.])
-        self.ocupacao_alta = fuzz.trimf(self.faixa_ocupacao, [70.,100.,100.])
+        self.capacidade_baixa = fuzz.trimf(self.faixa_capacidade, [1,1,100])
+        self.capacidade_media = fuzz.trapmf(self.faixa_capacidade, [80,100,200,300])
+        self.capacidade_alta = fuzz.trapmf(self.faixa_capacidade, [250,300,1000,1000])
+        self.ocupacao_baixa = fuzz.trimf(self.faixa_ocupacao, [0.,0.,50.])
+        self.ocupacao_media = fuzz.trapmf(self.faixa_ocupacao, [40.,60.,70.,85.])
+        self.ocupacao_alta = fuzz.trimf(self.faixa_ocupacao, [75.,100.,100.])
         self.descarte_baixo = fuzz.trimf(self.faixa_descarte, [0.,0.,2.])
         self.descarte_medio = fuzz.trapmf(self.faixa_descarte, [1.,2.,10.,11.])
         self.descarte_alto = fuzz.trapmf(self.faixa_descarte, [5.,11.,100.,100.])
@@ -87,6 +90,7 @@ class fuzzyDelayCost:
         fig_scale_x = 2.0
         fig_scale_y = 1.5
         fig = plt.figure(figsize=(6.4 * fig_scale_x, 4.8 * fig_scale_y))
+        fig.suptitle('Funções de pertinência para avaliação de atraso')
         row = 2
         col = 2
         ax = plt.subplot(row, col, 1, ymargin=0.05, xmargin=0.05, xlabel='Atraso[ms]')
@@ -95,7 +99,7 @@ class fuzzyDelayCost:
         plt.plot(self.faixa_atraso, self.atraso_baixo, label="Baixo")
         plt.plot(self.faixa_atraso, self.atraso_medio, label="Médio")
         plt.plot(self.faixa_atraso, self.atraso_alto, label="Alto")
-        plt.legend(loc="upper left")
+        plt.legend(loc="lower right")
         plt.subplot(row, col, 2, ymargin=0.1, xmargin=0.1)
         plt.title("Capacidade do enlace")
         plt.xlabel("Mbps")
@@ -103,7 +107,7 @@ class fuzzyDelayCost:
         plt.plot(self.faixa_capacidade, self.capacidade_baixa, label="Baixa")
         plt.plot(self.faixa_capacidade, self.capacidade_media, label="Média")
         plt.plot(self.faixa_capacidade, self.capacidade_alta, label="Alta")
-        plt.legend(loc="upper left")
+        plt.legend(loc="lower right")
         plt.subplot(row, col, 3, ymargin=0.1, xmargin=0.1)
         plt.title("Ocupação associada ao enlace")
         plt.xlabel("Percentual")
@@ -111,7 +115,7 @@ class fuzzyDelayCost:
         plt.plot(self.faixa_ocupacao, self.ocupacao_baixa, label="Baixa")
         plt.plot(self.faixa_ocupacao, self.ocupacao_media, label="Média")
         plt.plot(self.faixa_ocupacao, self.ocupacao_alta, label="Alta")
-        plt.legend(loc="upper left")
+        plt.legend(loc="lower right")
         plt.subplot(row, col, 4, ymargin=0.1, xmargin=0.1)
         plt.title("Descarte de pacotes associado ao enlace")
         plt.xlabel("Percentual")
@@ -119,7 +123,7 @@ class fuzzyDelayCost:
         plt.plot(self.faixa_descarte, self.descarte_baixo, label="Baixo")
         plt.plot(self.faixa_descarte, self.descarte_medio, label="Médio")
         plt.plot(self.faixa_descarte, self.descarte_alto, label="Alto")
-        plt.legend(loc="upper left")
+        plt.legend(loc="lower right")
         return fig
 
     def calculaCusto(self,atraso,capacidade,ocupacao,descarte):
@@ -278,9 +282,136 @@ class fuzzyDelayCost:
         logfuzzy.debug("Regra 15: %e - Consequência estimada: %f" % (w15,f15))
         custo_delay = (w1*f1+w2*f2+w3*f3+w4*f4+w5*f5+w6*f6+w7*f7+w8*f8+w9*f9+w10*f10+w11*f11+w12*f12+w13*f13+
                w14*f14+w15*f15)/(w1+w2+w3+w4+w5+w6+w7+w8+w9+w10+w11+w12+w13+w14+w15)
-        logfuzzy.debug("Custo final: %f" % custo_delay)
+        logfuzzy.debug("Custo final (delay): %f" % custo_delay)
         return custo_delay
 
+# PARA VAZÃO
+class fuzzyThroughputCost:
+    def __init__(self):
+        """
+        Inicializa a controladora fuzzy para determinar peso de enlaces
+        favorecendo serviços sensíveis a vazão
+        """
+        logfuzzy.info('Iniciando controlador fuzzy - vazão')
+        # ANTECEDENTES PARA O CASO DE DELAY
+        self.faixa_atraso = np.arange(0.1,50,0.1)
+        self.faixa_vazao = np.arange(0,1000,0.1)
+        self.faixa_descarte = np.arange(0,100,0.1)
+        # funções de pertinência das entradas
+        self.atraso_baixo = fuzz.trapmf(self.faixa_atraso, [0.1,0.1,5.,10.])
+        self.atraso_medio = fuzz.trapmf(self.faixa_atraso, [8.,15.,25.,40.])
+        self.atraso_alto = fuzz.trapmf(self.faixa_atraso, [30.,40.,50.,50.])
+        self.vazao_baixa = fuzz.trimf(self.faixa_vazao, [0.,0.,20.])
+        self.vazao_media = fuzz.trapmf(self.faixa_vazao, [15.,20.,200.,300.])
+        self.vazao_alta = fuzz.trapmf(self.faixa_vazao, [200.,300.,1000.,1000.])
+        self.descarte_baixo = fuzz.trimf(self.faixa_descarte, [0.,0.,2.])
+        self.descarte_medio = fuzz.trapmf(self.faixa_descarte, [1.,2.,10.,11.])
+        self.descarte_alto = fuzz.trapmf(self.faixa_descarte, [5.,11.,100.,100.])
+
+    def plotarPertinencias(self):
+        """
+        Elabora gráfico das funções de pertinência das entradas
+        """
+        # Plota funções de pertinência dos antecedentes
+        fig = plt.figure(figsize=(10,5))
+        fig.suptitle('Funções de pertinência para avaliação de vazão')
+        gs = gridspec.GridSpec(2, 2, width_ratios=[1, 1], height_ratios=[1, 1])
+        ax1 = fig.add_subplot(gs[0,0])
+        ax1.set_title("Atraso associado ao enlace")
+        ax1.set_xlabel('Atraso (ms)')
+        ax1.set_ylabel('Pertinência')
+        ax1.plot(self.faixa_atraso, self.atraso_baixo, label="Baixo")
+        ax1.plot(self.faixa_atraso, self.atraso_medio, label="Médio")
+        ax1.plot(self.faixa_atraso, self.atraso_alto, label="Alto")
+        ax1.legend(loc="upper left")
+        ax2 = fig.add_subplot(gs[0,1])
+        ax2.set_title("Descarte de pacotes associado ao enlace")
+        ax2.set_xlabel("Percentual")
+        ax2.set_ylabel('Pertinência')
+        ax2.plot(self.faixa_descarte, self.descarte_baixo, label="Baixo")
+        ax2.plot(self.faixa_descarte, self.descarte_medio, label="Médio")
+        ax2.plot(self.faixa_descarte, self.descarte_alto, label="Alto")
+        ax2.legend(loc="upper left")
+        ax3 = fig.add_subplot(gs[1,:])
+        ax3.set_title("Vazão disponível")
+        ax3.set_xlabel("Mbps")
+        ax3.set_ylabel('Pertinência')
+        ax3.plot(self.faixa_vazao, self.vazao_baixa, label="Baixa")
+        ax3.plot(self.faixa_vazao, self.vazao_media, label="Média")
+        ax3.plot(self.faixa_vazao, self.vazao_alta, label="Alta")
+        ax3.legend(loc="upper left")
+
+    def calculaCusto(self,atraso,capacidade,ocupacao,descarte):
+        """
+        Determina o custo em razão das entradas nítidas e avaliação
+        do controlador fuzzy
+
+        Parâmetros:
+            atraso (float): atraso em milisegundos, limitado na faixa 1 a 50ms
+            capacidade (int): capacidade, em Mpbs, limitada na faixa de 1 a 1000Mbps
+            ocupacao (float): percentual de ocupação do enlace, de 0 a 100%
+            descarte (float): percentual de descarte de pacotes observado no enlace, de 0 a 100%
+
+        Retorna:
+            float: valor calculado do custo
+        """
+        # determina a vazão
+        vazao = capacidade - (ocupacao/100)*capacidade
+        # fuzzyficação das entradas nítidas
+        atraso_nota_baixa = fuzz.interp_membership(self.faixa_atraso, self.atraso_baixo, atraso)
+        atraso_nota_media = fuzz.interp_membership(self.faixa_atraso, self.atraso_medio, atraso)
+        atraso_nota_alta = fuzz.interp_membership(self.faixa_atraso, self.atraso_alto, atraso)
+
+        vazao_nota_baixa = fuzz.interp_membership(self.faixa_vazao, self.vazao_baixa, vazao)
+        vazao_nota_media = fuzz.interp_membership(self.faixa_vazao, self.vazao_media, vazao)
+        vazao_nota_alta = fuzz.interp_membership(self.faixa_vazao, self.vazao_alta, vazao)
+
+        descarte_nota_baixa = fuzz.interp_membership(self.faixa_descarte, self.descarte_baixo, descarte)
+        descarte_nota_media = fuzz.interp_membership(self.faixa_descarte, self.descarte_medio, descarte)
+        descarte_nota_alta = fuzz.interp_membership(self.faixa_descarte, self.descarte_alto, descarte)
+
+        # Relata as avaliações de pertinência
+        logfuzzy.debug("Atraso - baixo: %e" % atraso_nota_baixa)
+        logfuzzy.debug("Atraso - médio: %e" % atraso_nota_media)
+        logfuzzy.debug("Atraso - alto: %e" % atraso_nota_alta)
+        logfuzzy.debug("Vazão: %f" % vazao)
+        logfuzzy.debug("Vazão - baixa: %e" % vazao_nota_baixa)
+        logfuzzy.debug("Vazão - média: %e" % vazao_nota_media)
+        logfuzzy.debug("Vazão - alta: %e" % vazao_nota_alta)
+        logfuzzy.debug("Descarte - baixo: %e" % descarte_nota_baixa)
+        logfuzzy.debug("Descarte - médio: %e" % descarte_nota_media)
+        logfuzzy.debug("Descarte - alto: %e" % descarte_nota_alta)
+        # regras (Sugeno)
+        # Custo priorizando atraso baixo
+        # AND = fmin
+        # OR = fmax
+        # SE vazao = (alta ou média) E descarte = (baixo ou médio) ENTAO CustoVazao = f16
+        w16A = np.fmax(descarte_nota_baixa,descarte_nota_media)
+        w16B = np.fmax(vazao_nota_alta,vazao_nota_media)
+        w16 = np.fmin(w16B,w16A)
+        f16 = 19*(0.7*((1-vazao_nota_alta)+vazao_nota_media)+0.3*(((1-atraso_nota_baixa)+atraso_nota_media
+                +atraso_nota_alta)+4*((1-descarte_nota_baixa)+descarte_nota_media))/11)+1
+        logfuzzy.debug("Regra 16: %e - Consequência estimada: %f" % (w16,f16))
+        # SE vazao = (baixa) E descarte = (baixo,médio) ENTAO CustoVazao = f17
+        w17A = np.fmax(descarte_nota_baixa,descarte_nota_media)
+        w17 = np.fmin(vazao_nota_baixa,w17A)
+        f17 = 20*(0.8*(vazao_nota_baixa)+0.2*(((1-atraso_nota_baixa)+atraso_nota_media
+                +atraso_nota_alta)+4*((1-descarte_nota_baixa)+descarte_nota_media))/11)+20
+        logfuzzy.debug("Regra 17: %e - Consequência estimada: %f" % (w17,f17))
+        # SE vazao = (média ou alta) E descarte=alto ENTAO CustoVazao => f18
+        w18A = np.fmax(vazao_nota_alta,vazao_nota_media)
+        w18 = np.fmin(w18A,descarte_nota_alta)
+        f18 = 20*(0.5*((1-vazao_nota_alta)+vazao_nota_media)+0.5*(((1-atraso_nota_baixa)+atraso_nota_media
+                +atraso_nota_alta)+4*descarte_nota_alta)/11)+20
+        logfuzzy.debug("Regra 18: %e - Consequência estimada: %f" % (w18,f18))
+        # SE vazao = baixa E descarte=alto ENTAO CustoVazao => f19
+        w19 = np.fmin(vazao_nota_baixa,descarte_nota_alta)
+        f19 = 30*(0.6*(vazao_nota_baixa)+0.4*(((1-atraso_nota_baixa)+atraso_nota_media
+                +atraso_nota_alta)+4*descarte_nota_alta)/11)+50
+        logfuzzy.debug("Regra 19: %e - Consequência estimada: %f" % (w19,f19))
+        custo_vazao = (w16*f16+w17*f17+w18*f18+w19*f19)/(w16+w17+w18+w19)
+        logfuzzy.debug("Custo final (vazão): %f" % custo_vazao)
+        return custo_vazao
 
 #################################################################
 # Funções de apoio
@@ -1150,52 +1281,63 @@ def runTeste(topo,id_topo,draw):
 # Testes
 #################################################################
 
-delay = fuzzyDelayCost()
+#delay = fuzzyDelayCost()
 
 # topologia de testes A (Hub & Spoke)
-topo1 = topoA()
-print(topo1)
-topo1.randomizeStats(14532,7,95,1.5)
-runTeste(topo1.topo,'TopoA',False)
+#topo1 = topoA()
+#print(topo1)
+#topo1.randomizeStats(14532,7,95,1.5)
+#runTeste(topo1.topo,'TopoA',False)
 
-topo2 = topoB()
-print(topo2)
-topo2.randomizeStats(14532,7,95,1.5)
-runTeste(topo2.topo,'TopoB',True)
+#topo2 = topoB()
+#print(topo2)
+#topo2.randomizeStats(14532,7,95,1.5)
+#runTeste(topo2.topo,'TopoB',False)
 
-topo3 = topoC()
-print(topo3)
-topo3.randomizeStats(14532,7,95,1.5)
-runTeste(topo3.topo,'TopoC',False)
+#topo3 = topoC()
+#print(topo3)
+#topo3.randomizeStats(14532,7,95,1.5)
+#runTeste(topo3.topo,'TopoC',False)
 
-plt.show(block=True)
+#plt.show(block=True)
 
 
 # entradas para Sugeno
-# while True:
-#     in_atraso = float(input("Informe o atraso do enlace, entre 1.0 e 50.0 (ms):"))
-#     if ((in_atraso<1.0) or (in_atraso>50.0)):
-#         print("O valor informado deve estar entre 1.0 e 50.0")
-#         continue
-#     break
+while True:
+    in_atraso = float(input("Informe o atraso do enlace, entre 1.0 e 50.0 (ms):"))
+    if ((in_atraso<1.0) or (in_atraso>50.0)):
+        print("O valor informado deve estar entre 1.0 e 50.0")
+        continue
+    break
 
-# while True:
-#     in_capacidade = int(input("Informe a capacidade do enlace, entre 1 e 1000 (Mbps):"))
-#     if ((in_capacidade<0.1) or (in_capacidade>1000)):
-#         print("O valor informado deve estar entre 1 e 1000")
-#         continue
-#     break
+while True:
+    in_capacidade = int(input("Informe a capacidade do enlace, entre 1 e 1000 (Mbps):"))
+    if ((in_capacidade<0.1) or (in_capacidade>1000)):
+        print("O valor informado deve estar entre 1 e 1000")
+        continue
+    break
 
-# while True:
-#     in_ocupacao = float(input("Informe a ocupação do enlace (%), de 0.0 a 100:"))
-#     if ((in_ocupacao<0.0) or (in_ocupacao>100.0)):
-#         print("O valor informado deve estar entre 0.0 e 100.0")
-#         continue
-#     break
+while True:
+    in_ocupacao = float(input("Informe a ocupação do enlace (%), de 0.0 a 100:"))
+    if ((in_ocupacao<0.0) or (in_ocupacao>100.0)):
+        print("O valor informado deve estar entre 0.0 e 100.0")
+        continue
+    break
 
-# while True:
-#     in_descarte = float(input("Informe a taxa de descarte de pacotes (%), de 0.0 a 100:"))
-#     if ((in_descarte<0.0) or (in_descarte>100.0)):
-#         print("O valor informado deve estar entre 0.0 e 100.0")
-#         continue
-#     break
+while True:
+    in_descarte = float(input("Informe a taxa de descarte de pacotes (%), de 0.0 a 100:"))
+    if ((in_descarte<0.0) or (in_descarte>100.0)):
+        print("O valor informado deve estar entre 0.0 e 100.0")
+        continue
+    break
+
+delay = fuzzyDelayCost()
+delay.plotarPertinencias()
+custo_delay = delay.calculaCusto(in_atraso,in_capacidade,in_ocupacao,in_descarte)
+vazao = fuzzyThroughputCost()
+vazao.plotarPertinencias()
+custo_vazao = vazao.calculaCusto(in_atraso,in_capacidade,in_ocupacao,in_descarte)
+
+print("Delay: %f" %custo_delay)
+print("Vazão: %f" %custo_vazao)
+plt.show(block=True)
